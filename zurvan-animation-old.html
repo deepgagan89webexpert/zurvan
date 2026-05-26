@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ZURVAN — Scroll Animation</title>
+
+  <style>
+    *,
+    *::before,
+    *::after { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #F3E9D9;
+      color: #231f20;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+
+    /* The hero is what gets pinned. It must be at least 100vh so the pin
+       has real estate. Flex centring makes the SVG land in the middle of
+       the viewport before any GSAP runs. */
+    .hero {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .hero svg {
+      width: min(70vw, 600px);
+      height: auto;
+      overflow: visible;
+    }
+
+    /* Canvas overlay for the particle Z. Sits exactly over the hero. */
+    .hero__particles {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+
+    /* Sections after the hero so you have something to scroll into */
+    .after {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: clamp(28px, 4vw, 56px);
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+    .after--dark {
+      background: #231f20;
+      color: #f5f3ef;
+    }
+
+    /* Tiny scroll hint at the top of the page so users know to scroll */
+    .scroll-hint {
+      position: absolute;
+      bottom: 32px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 12px;
+      letter-spacing: 0.3em;
+      text-transform: uppercase;
+      opacity: 0.5;
+      pointer-events: none;
+    }
+    .scroll-hint::after {
+      content: "";
+      display: block;
+      width: 1px;
+      height: 36px;
+      margin: 8px auto 0;
+      background: currentColor;
+      animation: hint 1.6s ease-in-out infinite;
+      transform-origin: top;
+    }
+    @keyframes hint {
+      0%, 100% { transform: scaleY(0.3); opacity: 0.2; }
+      50%      { transform: scaleY(1);   opacity: 0.8; }
+    }
+  </style>
+</head>
+<body>
+
+  <section class="hero">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 390.04 223.86">
+      <defs>
+        <style>.cls-1, #main-z-icon { fill: #091F34; }</style>
+      </defs>
+      <title>zurvan-logo</title>
+      <g id="zurvan-logo">
+        <path id="main-z-icon" d="M143.56,116.67,227.49,4.44l-4.85,0c-13.66.06-27.32-.1-41,.36C171,5.19,168.5,9.48,173.07,19c3.58,7.48,7.84,14.64,11.79,21.95l-1.31,1L149.81,0h96L164,108.27c1,.9,1.23,1.3,1.47,1.29,15.3,0,30.61.22,45.89-.27,6-.19,8.45-4.46,6.37-10.28-2.29-6.4-5.37-12.52-8.17-18.73-1.13-2.49-2.44-4.9-3.67-7.34l1.19-.73,33.74,44.46Z"/>
+        <g id="zurvan">
+          <path id="z" class="cls-1" d="M53.45,147.9V150l-42,70H32.09a25.57,25.57,0,0,0,8-1.05,10.57,10.57,0,0,0,4.95-3.31,15.41,15.41,0,0,0,2.79-6.05,64.39,64.39,0,0,0,1.47-9.26h2.42q-.32,3.26-.32,8.63,0,2,.16,5.73t.58,7.73q-3.89-.21-8.52-.26t-9.21-.05H26q-6.21,0-13.1.05T0,222.39v-2.1l42.3-70H21.78a25.61,25.61,0,0,0-8,1.05,10.57,10.57,0,0,0-4.95,3.31,15.39,15.39,0,0,0-2.79,6A64.25,64.25,0,0,0,4.52,170H2.1q.21-1.68.26-3.89t.05-4.73q0-2-.16-5.73t-.58-7.73l8.52.21q4.63.11,9.26.11h8.42q6,0,12.89-.05T53.45,147.9Z"/>
+          <path id="u" class="cls-1" d="M127,147.9V150a13.06,13.06,0,0,0-5.42,1.05,4.83,4.83,0,0,0-2.47,3.05,22,22,0,0,0-.63,6v31.67a76.17,76.17,0,0,1-.95,12.84,27,27,0,0,1-3.37,9.47,19.11,19.11,0,0,1-7.68,7.1,24.29,24.29,0,0,1-11.57,2.68,37.57,37.57,0,0,1-9.63-1.21,18.46,18.46,0,0,1-8-4.47A24.94,24.94,0,0,1,72.44,212a23.6,23.6,0,0,1-2.37-8,92.57,92.57,0,0,1-.63-11.89V159a19.08,19.08,0,0,0-.63-5.73,4,4,0,0,0-2.47-2.52,18,18,0,0,0-5.42-.79v-2.1q2.21.11,5.79.21t7.68.11q3.68,0,7.31-.11t6-.21V150a17.94,17.94,0,0,0-5.42.79,3.94,3.94,0,0,0-2.47,2.52,19.08,19.08,0,0,0-.63,5.73v34.83A92.86,92.86,0,0,0,79.75,204a27.85,27.85,0,0,0,2.16,8.42,12.48,12.48,0,0,0,5,5.68,17,17,0,0,0,8.94,2.05q8,0,12.36-3.52a18.49,18.49,0,0,0,6.1-9.73,52,52,0,0,0,1.74-14V160.1a15.9,15.9,0,0,0-.89-6,5.68,5.68,0,0,0-3-3.05,15.2,15.2,0,0,0-5.68-1.05v-2.1q1.89.11,5,.21t5.73.11q2.73,0,5.42-.11T127,147.9Z"/>
+          <path id="r" class="cls-1" d="M134.26,147.9q2.21.11,5.79.21t7,.11q4.95,0,9.47-.11T163,148a36,36,0,0,1,14.15,2.42,18.67,18.67,0,0,1,8.42,6.58,16.34,16.34,0,0,1,2.79,9.31,20.27,20.27,0,0,1-1.26,6.73,18.33,18.33,0,0,1-4.37,6.73,23.41,23.41,0,0,1-8.47,5.21A38.39,38.39,0,0,1,160.67,187h-10.1v-2.1h9q7.47,0,11.42-2.37a12,12,0,0,0,5.36-6.31,25.78,25.78,0,0,0,1.42-8.79q0-8.31-3.94-12.89T160.35,150q-4.84,0-6.31,1.79T152.57,159v52.19a19.12,19.12,0,0,0,.63,5.68,3.79,3.79,0,0,0,2.47,2.53,21.58,21.58,0,0,0,5.42.84v2.1q-2.42-.21-6-.26t-7.31-.05q-4.1,0-7.68.05t-5.79.26v-2.1a21.6,21.6,0,0,0,5.42-.84,3.79,3.79,0,0,0,2.47-2.53,19.12,19.12,0,0,0,.63-5.68V159a19.06,19.06,0,0,0-.63-5.73,3.94,3.94,0,0,0-2.47-2.52,18,18,0,0,0-5.42-.79ZM151,185.25q5.68.21,8.95.47t5.31.47q2.05.21,3.95.53,7,1.16,10.15,4.26t4.58,9.63l2.63,10.73a28.49,28.49,0,0,0,2.16,6.68,3.44,3.44,0,0,0,3.42,1.95,4.86,4.86,0,0,0,3-1.16A19.49,19.49,0,0,0,197.7,216l1.58,1.16a20.1,20.1,0,0,1-4.58,5,11.14,11.14,0,0,1-6.68,1.74,10.75,10.75,0,0,1-6.84-2.31q-2.95-2.31-4.42-9L174.45,202a57.26,57.26,0,0,0-2.16-7.84,12.45,12.45,0,0,0-3.37-5.21q-2.16-1.89-6.37-1.89H151.2Z"/>
+          <path id="v" class="cls-1" d="M262.83,147.9V150a9.73,9.73,0,0,0-4.26,2.42q-2.26,2-4.05,6.73l-24.73,63.76h-1.68l-25.67-66.18q-1.58-4-3.58-5.31a7.77,7.77,0,0,0-3.68-1.42v-2.1q2.1.11,5.21.21t6,.11q4.1,0,7.68-.11t5.79-.21V150a16.71,16.71,0,0,0-5.42.84,2.9,2.9,0,0,0-2,2.58,13.57,13.57,0,0,0,1.21,5.42l19.57,51.87-1.68,1.79,18.31-47.56q2.21-5.68,2.1-8.89a5.11,5.11,0,0,0-2.42-4.58,14.12,14.12,0,0,0-6.73-1.47v-2.1l6.21.21q3.16.11,5.89.11t4.52-.11Z"/>
+          <path id="a" class="cls-1" d="M289.35,147.37,315,213.55q1.58,4,3.58,5.31a7.71,7.71,0,0,0,3.68,1.42v2.1q-2.11-.21-5.16-.26t-6.1-.05q-4.1,0-7.68.05t-5.79.26v-2.1q5.37-.21,6.84-1.84t-.63-7l-19.57-52.29,1.68-1.37-18.31,47.56a28.12,28.12,0,0,0-2,7.1,7.94,7.94,0,0,0,.58,4.58,5.13,5.13,0,0,0,3.05,2.42,18.82,18.82,0,0,0,5.42.84v2.1q-2.95-.21-6.16-.26t-5.94-.05q-2.63,0-4.47.05a33.57,33.57,0,0,0-3.42.26v-2.1a10.53,10.53,0,0,0,4.31-2.47q2.21-1.95,4-6.68l24.73-63.76h1.68Zm12.84,44.72v2.1H270.83l1.05-2.1Z"/>
+          <path id="n" class="cls-1" d="M390,147.9V150a13.06,13.06,0,0,0-5.42,1.05,4.83,4.83,0,0,0-2.47,3.05,22,22,0,0,0-.63,6v62.82H379.1l-44.19-68.29v55.56a20.4,20.4,0,0,0,.68,5.94,4.74,4.74,0,0,0,2.74,3.05,18.56,18.56,0,0,0,6.16,1.1v2.1q-1.89-.21-4.95-.26t-5.79-.05q-2.63,0-5.31.05t-4.47.26v-2.1a14.86,14.86,0,0,0,5.42-1.1,4.66,4.66,0,0,0,2.47-3.05,22.05,22.05,0,0,0,.63-5.94V159a19.09,19.09,0,0,0-.63-5.73,4,4,0,0,0-2.47-2.52A18,18,0,0,0,324,150v-2.1q1.79.11,4.47.21t5.31.11q2.31,0,4.42-.11l3.79-.21,37.14,57.24v-45a20.36,20.36,0,0,0-.68-6,4.91,4.91,0,0,0-2.74-3.05,16.38,16.38,0,0,0-6.16-1.05v-2.1q1.89.11,5,.21t5.73.11q2.73,0,5.42-.11T390,147.9Z"/>
+        </g>
+      </g>
+    </svg>
+
+    <canvas class="hero__particles" aria-hidden="true"></canvas>
+
+    <span class="scroll-hint">Scroll</span>
+  </section>
+
+  <section class="after">Keep scrolling</section>
+  <section class="after after--dark">End</section>
+
+  <!-- GSAP + ScrollTrigger from CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/ScrollTrigger.min.js"></script>
+
+  <script>
+    gsap.registerPlugin(ScrollTrigger);
+
+    const letters  = gsap.utils.toArray("#zurvan path");
+    const mainIcon = document.querySelector("#main-z-icon");
+    const zurvan   = document.querySelector("#zurvan");
+
+    /* Initial state.
+       The viewBox is 0..223 tall and #main-z-icon occupies y ≈ 0–130.
+       Lifting #zurvan up by ~half that visually centres the text inside
+       the SVG box while the icon is hidden. */
+    gsap.set(zurvan,   { y: -65, opacity: 1, transformOrigin: "50% 50%" });
+    /* Z keeps its centred transform origin */
+    gsap.set("#z", { transformOrigin: "50% 50%" });
+
+    /* Icon starts INVISIBLE AT THE SVG CENTRE — same spot ZURVAN
+       occupied. y:+47 shifts the icon's native centre (195, 65) down
+       to the viewBox centre (195, 112). When ZURVAN melts away, the
+       logo simply fades in here. */
+    gsap.set(mainIcon, {
+      opacity: 0,
+      scale: 1,
+      rotation: 0,
+      x: 0,
+      y: 47,
+      transformOrigin: "50% 50%"
+    });
+
+    /* Build the displacement filter at runtime so we can animate its attrs */
+    const svg  = document.querySelector(".hero svg");
+    const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+    defs.innerHTML = `
+      <filter id="wave-distortion"
+        x="-200%" y="-200%" width="500%" height="500%">
+        <feTurbulence id="turbulence" type="fractalNoise"
+          baseFrequency="0.01 0.02" numOctaves="2" seed="2" result="noise"/>
+        <feDisplacementMap id="displacement" in="SourceGraphic" in2="noise"
+          scale="0" xChannelSelector="R" yChannelSelector="G"/>
+      </filter>`;
+    svg.prepend(defs);
+    gsap.set("#zurvan", { filter: "url(#wave-distortion)" });
+
+    /* ===========================================================
+       PARTICLE SYSTEM — replaces the Z icon with ~1000 dots that
+       fly in, form the Z, then scatter outward. #main-z-icon stays
+       invisible; its path is used only to sample target positions. */
+    const PARTICLE_COUNT = 1000;
+    const VIEWBOX_W = 390.04;
+    const VIEWBOX_H = 223.86;
+    const hero   = document.querySelector(".hero");
+    const canvas = document.querySelector(".hero__particles");
+    const ctx    = canvas.getContext("2d");
+
+    /* Sample N random points from the FILLED area of a path.
+       Uses SVG's native isPointInFill() — guaranteed to match the
+       browser's own rendering of the path (so the particle Z looks
+       identical to the rendered SVG, including any fill-rule
+       quirks in the path data). */
+    function samplePathPositions(pathEl, count) {
+      const bbox = pathEl.getBBox();
+      const svgEl = pathEl.ownerSVGElement;
+      const point = svgEl.createSVGPoint();
+      const all = [];
+      // Step at sub-unit resolution for dense coverage
+      const STEP = 0.7;
+      for (let y = bbox.y; y < bbox.y + bbox.height; y += STEP) {
+        for (let x = bbox.x; x < bbox.x + bbox.width; x += STEP) {
+          point.x = x;
+          point.y = y;
+          if (pathEl.isPointInFill(point)) {
+            all.push([x, y]);
+          }
+        }
+      }
+      const out = [];
+      for (let i = 0; i < count; i++) {
+        out.push(all[Math.floor(Math.random() * all.length)]);
+      }
+      return out;
+    }
+
+    /* Build particles. Each has a target (viewBox coord), random
+       scatter offset, random size, small assembly delay. */
+    const targetsVB = samplePathPositions(mainIcon, PARTICLE_COUNT);
+    const particles = targetsVB.map(([vbX, vbY]) => {
+      const scAngle = Math.random() * Math.PI * 2;
+      const scDist  = 300 + Math.random() * 500;
+      return {
+        vbX, vbY,
+        tx: 0, ty: 0,
+        sx: 0, sy: 0,
+        scatterX: Math.cos(scAngle) * scDist,
+        scatterY: Math.sin(scAngle) * scDist,
+        size: 1.5 + Math.random() * 2.0,
+        delay: Math.random() * 0.25,
+      };
+    });
+
+    /* Compute canvas dims + per-particle screen coords. Re-run on
+       resize so particles always land on the visible SVG centre. */
+    function updateLayout() {
+      const dpr = window.devicePixelRatio || 1;
+      const heroRect = hero.getBoundingClientRect();
+      const svgRect  = svg.getBoundingClientRect();
+
+      canvas.width  = heroRect.width  * dpr;
+      canvas.height = heroRect.height * dpr;
+      canvas.style.width  = heroRect.width  + "px";
+      canvas.style.height = heroRect.height + "px";
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      const scale = svgRect.width / VIEWBOX_W;
+      const ox = svgRect.left - heroRect.left;
+      const oy = svgRect.top  - heroRect.top;
+      const cx = ox + (VIEWBOX_W / 2) * scale;
+      const cy = oy + (VIEWBOX_H / 2) * scale;
+      const diag = Math.hypot(heroRect.width, heroRect.height);
+
+      particles.forEach(p => {
+        p.tx = ox + p.vbX * scale;
+        p.ty = oy + p.vbY * scale;
+        const a = Math.random() * Math.PI * 2;
+        const d = diag * (0.6 + Math.random() * 0.6);
+        p.sx = cx + Math.cos(a) * d;
+        p.sy = cy + Math.sin(a) * d;
+      });
+    }
+    updateLayout();
+    window.addEventListener("resize", () => {
+      updateLayout();
+      ScrollTrigger.refresh();
+    });
+
+    /* State driven by the timeline below */
+    const phase = { assemble: 0, scatter: 0 };
+
+    /* Per-frame render. Each particle's pos/alpha derives from
+       phase.assemble (with per-particle delay) and phase.scatter. */
+    function render() {
+      const r = hero.getBoundingClientRect();
+      ctx.clearRect(0, 0, r.width, r.height);
+      ctx.fillStyle = "#091F34";
+
+      const a = phase.assemble;
+      const s = phase.scatter;
+
+      for (let i = 0; i < particles.length; i++) {
+        const p = particles[i];
+        let pa = (a - p.delay) / (1 - p.delay);
+        if (pa < 0) pa = 0; else if (pa > 1) pa = 1;
+        const eased = 1 - (1 - pa) * (1 - pa) * (1 - pa);  // power3.out
+
+        let x = p.sx + (p.tx - p.sx) * eased;
+        let y = p.sy + (p.ty - p.sy) * eased;
+        let alpha = eased;
+
+        if (s > 0) {
+          const se = s * s;  // power2.in
+          x = p.tx + p.scatterX * se;
+          y = p.ty + p.scatterY * se;
+          alpha = 1 - se;
+        }
+
+        if (alpha > 0.01) {
+          ctx.globalAlpha = alpha;
+          ctx.fillRect(x - p.size * 0.5, y - p.size * 0.5, p.size, p.size);
+        }
+      }
+      ctx.globalAlpha = 1;
+    }
+    gsap.ticker.add(render);
+
+    /* Master scroll-driven timeline */
+    const tl = gsap.timeline({
+      scrollTrigger: {
+        trigger: ".hero",
+        start: "top top",
+        end: "+=3500",
+        scrub: 1.5,
+        pin: true,
+        anticipatePin: 1,
+        // markers: true,  // <- enable while tuning
+      }
+    });
+
+    /* STEP 1 — heavy distortion ramps up + per-letter waves run together.
+       baseFrequency lower → larger sweeping waves (more "expansion" feel).
+       scale much higher → letters get warped harder.
+       Per-letter offsets doubled → letters travel further and skew more. */
+    tl.to("#turbulence",   { attr: { baseFrequency: "0.04 0.07" }, duration: 2, ease: "sine.inOut" })
+      .to("#displacement", { attr: { scale: 160 },                 duration: 2, ease: "sine.inOut" }, "<")
+      .to("#z", { y: -28, x: -10, skewY:  22, rotation: -14, duration: 2 }, "<")
+      .to("#u", { y:  22, x:   8, skewY: -20, rotation:  12, duration: 2 }, "<")
+      .to("#r", { y: -30, x:  -6, skewY:  20, rotation: -10, duration: 2 }, "<")
+      .to("#v", { y:  28, x:   6, skewY: -24, rotation:  14, duration: 2 }, "<")
+      .to("#a", { y: -22, x:  -8, skewY:  18, rotation: -10, duration: 2 }, "<")
+      .to("#n", { y:  32, x:  12, skewY: -22, rotation:  16, duration: 2 }, "<");
+
+    /* STEP 3 — Letters fade out FAST. Displacement stays PINNED at peak
+       throughout so they never read as crisp, partially-faded letters —
+       they're always warped while dissolving. */
+    tl.to(letters, {
+      opacity: 0,
+      stagger: { each: 0.02, from: "center" },
+      duration: 0.35,
+      ease: "power2.in"
+    });
+
+    /* Release the (now invisible) displacement — runs in parallel
+       with the particle assembly below. The SVG icon stays invisible
+       forever; the Z is now drawn entirely on the canvas overlay. */
+    tl.to("#displacement", { attr: { scale: 0 }, duration: 0.3 }, ">");
+
+    /* STEP 4 — PHASE A: particles fly in from outside and assemble
+       into the Z shape. Per-particle delay (random 0–0.25) is baked
+       into the render function for an organic flocking arrival. */
+    tl.to(phase, { assemble: 1, duration: 1.5, ease: "power3.out" }, "<+=0.1");
+
+    /* STEP 5 — PHASE B: hold. Z is fully formed and visible while
+       this empty tween consumes scroll distance. */
+    tl.to({}, { duration: 0.02 });
+
+    /* STEP 6 — PHASE C: particles scatter outward and fade. */
+    tl.to(phase, { scatter: 1, duration: 1.4, ease: "power2.in" });
+
+    /* Fade out the scroll hint as soon as the user starts scrolling */
+    gsap.to(".scroll-hint", {
+      opacity: 0,
+      scrollTrigger: {
+        trigger: ".hero",
+        start: "top top",
+        end: "+=200",
+        scrub: true,
+      }
+    });
+  </script>
+</body>
+</html>
