@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ZURVAN — 3D Scroll Animation</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #040A18;
+      color: #F3E9D9;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    .hero {
+      min-height: 100vh;
+      position: relative;
+      overflow: hidden;
+    }
+    .hero__canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    .after {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: clamp(28px, 4vw, 56px);
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+    .after        { background: #0A1428; color: #F3E9D9; }
+    .after--dark  { background: #02060F; color: #C68F8F; }
+    .scroll-hint {
+      position: absolute;
+      bottom: 32px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 12px;
+      letter-spacing: 0.3em;
+      text-transform: uppercase;
+      color: rgba(243, 233, 217, 0.6);
+      pointer-events: none;
+      z-index: 1;
+    }
+    .scroll-hint::after {
+      content: "";
+      display: block;
+      width: 1px;
+      height: 36px;
+      margin: 8px auto 0;
+      background: currentColor;
+      animation: hint 1.6s ease-in-out infinite;
+      transform-origin: top;
+    }
+    @keyframes hint {
+      0%, 100% { transform: scaleY(0.3); opacity: 0.2; }
+      50%      { transform: scaleY(1);   opacity: 0.8; }
+    }
+  </style>
+</head>
+<body>
+
+  <section class="hero">
+    <canvas class="hero__canvas" aria-hidden="true"></canvas>
+    <span class="scroll-hint">Scroll</span>
+  </section>
+
+  <section class="after">Keep scrolling</section>
+  <section class="after after--dark">End</section>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/ScrollTrigger.min.js"></script>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+
+  <script type="module">
+  import * as THREE from 'three';
+  import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+  import { RenderPass }     from 'three/addons/postprocessing/RenderPass.js';
+  import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+  import { OutputPass }     from 'three/addons/postprocessing/OutputPass.js';
+
+  gsap.registerPlugin(ScrollTrigger);
+
+  const PARTICLE_COUNT_CHROME = 900;
+  const PARTICLE_COUNT_GOLD   = 2600;
+  const NECK_RADIUS           = 4;     // stream pinches to this radius at the neck
+  const TURB_AMP              = 0.55;  // per-frame turbulence amplitude (world units)
+  const Z_HALF_W   = 50;
+  const Z_HALF_H   = 65;
+  const Z_CAP_H    = 12;
+  const Z_DEPTH    = 30;
+  const Z_SLIDE_X  = -140;
+  const FALL_DURATION = 0.25;
+  const NECK = new THREE.Vector3(0, 0, 22);
+
+  const Z_TOP_VERTS = [
+    { x: -Z_HALF_W, y:  Z_HALF_H },
+    { x:  Z_HALF_W, y:  Z_HALF_H },
+    { x:  Z_HALF_W, y:  Z_HALF_H - Z_CAP_H },
+    { x:  0,        y:  0 },
+    { x: -Z_HALF_W, y:  Z_HALF_H - Z_CAP_H },
+  ];
+  const Z_BOT_VERTS = [
+    { x:  0,        y:  0 },
+    { x:  Z_HALF_W, y: -(Z_HALF_H - Z_CAP_H) },
+    { x:  Z_HALF_W, y: -Z_HALF_H },
+    { x: -Z_HALF_W, y: -Z_HALF_H },
+    { x: -Z_HALF_W, y: -(Z_HALF_H - Z_CAP_H) },
+  ];
+
+  const hero   = document.querySelector('.hero');
+  const canvas = document.querySelector('.hero__canvas');
+
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 0.95;
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x040A18);
+  scene.fog = new THREE.Fog(0x040A18, 700, 1500);
+
+  const camera = new THREE.PerspectiveCamera(38, window.innerWidth / window.innerHeight, 1, 2000);
+  camera.position.set(0, 0, 540);
+  camera.lookAt(0, 0, 0);
+
+  scene.add(new THREE.HemisphereLight(0x8FA8C8, 0x1A2030, 0.35));
+  const keyLight = new THREE.DirectionalLight(0xFFF6E8, 1.1);
+  keyLight.position.set(110, 160, 220);
+  scene.add(keyLight);
+  const warmFill = new THREE.DirectionalLight(0xE8A98E, 0.55);
+  warmFill.position.set(-130, -50, 160);
+  scene.add(warmFill);
+  const rimLight = new THREE.DirectionalLight(0xB7C8E8, 0.45);
+  rimLight.position.set(-80, 60, -200);
+  scene.add(rimLight);
+
+  function buildEnvMap() {
+    const envScene = new THREE.Scene();
+
+    // Dark studio gradient: bright neutral top (key bounce), warm middle, deep navy floor.
+    // This is what chrome will reflect in its low-roughness range — designed like a
+    // luxury photo-studio softbox setup viewed from inside a sphere.
+    const gradCanvas = document.createElement('canvas');
+    gradCanvas.width  = 4;
+    gradCanvas.height = 1024;
+    const gctx = gradCanvas.getContext('2d');
+    const grad = gctx.createLinearGradient(0, 0, 0, 1024);
+    grad.addColorStop(0.00, '#F4F0E8');  // overhead key bounce (warm white)
+    grad.addColorStop(0.18, '#A89A88');  // upper midtone
+    grad.addColorStop(0.40, '#34384A');  // shadow band
+    grad.addColorStop(0.55, '#1A2238');  // horizon
+    grad.addColorStop(0.78, '#080F1E');  // lower
+    grad.addColorStop(1.00, '#02050C');  // floor / void
+    gctx.fillStyle = grad;
+    gctx.fillRect(0, 0, gradCanvas.width, gradCanvas.height);
+    const gradTex = new THREE.CanvasTexture(gradCanvas);
+    gradTex.mapping = THREE.EquirectangularReflectionMapping;
+    gradTex.colorSpace = THREE.SRGBColorSpace;
+    envScene.background = gradTex;
+
+    // Large overhead softbox — primary highlight that streaks across chrome
+    const ceiling = new THREE.Mesh(
+      new THREE.PlaneGeometry(600, 220),
+      new THREE.MeshBasicMaterial({ color: 0xFFFAF0 })
+    );
+    ceiling.position.set(0, 300, -40);
+    ceiling.rotation.x = Math.PI / 2;
+    envScene.add(ceiling);
+
+    // Hard key bar — narrow vertical bright slab that gives chrome a crisp specular streak
+    const keyBar = new THREE.Mesh(
+      new THREE.PlaneGeometry(60, 360),
+      new THREE.MeshBasicMaterial({ color: 0xFFFFFF })
+    );
+    keyBar.position.set(220, 50, -180);
+    envScene.add(keyBar);
+
+    // Warm rim — rose-gold pickup, also gives chrome a warm edge highlight
+    const warmRim = new THREE.Mesh(
+      new THREE.PlaneGeometry(180, 320),
+      new THREE.MeshBasicMaterial({ color: 0xE8B098 })
+    );
+    warmRim.position.set(-260, -30, 60);
+    warmRim.rotation.y = Math.PI / 2;
+    envScene.add(warmRim);
+
+    // Cool back fill — adds the navy/blue reflection on the back-facing chrome
+    const coolBack = new THREE.Mesh(
+      new THREE.PlaneGeometry(400, 200),
+      new THREE.MeshBasicMaterial({ color: 0x4A6890 })
+    );
+    coolBack.position.set(-40, 30, 320);
+    coolBack.rotation.y = Math.PI;
+    envScene.add(coolBack);
+
+    // Floor card — soft warm bounce from below for that "presented on velvet" feel
+    const floorCard = new THREE.Mesh(
+      new THREE.PlaneGeometry(500, 500),
+      new THREE.MeshBasicMaterial({ color: 0x2A1A1A })
+    );
+    floorCard.position.set(0, -260, 0);
+    floorCard.rotation.x = -Math.PI / 2;
+    envScene.add(floorCard);
+
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    const envmap = pmrem.fromScene(envScene, 0.035).texture;
+    pmrem.dispose();
+    gradTex.dispose();
+    return envmap;
+  }
+  const envmap = buildEnvMap();
+  scene.environment = envmap;
+
+  function makeShape(verts) {
+    const s = new THREE.Shape();
+    s.moveTo(verts[0].x, verts[0].y);
+    for (let i = 1; i < verts.length; i++) s.lineTo(verts[i].x, verts[i].y);
+    s.closePath();
+    return s;
+  }
+
+  const extrudeSettings = {
+    depth: Z_DEPTH,
+    bevelEnabled: true,
+    bevelSize: 2.8,
+    bevelThickness: 2.6,
+    bevelSegments: 6,
+    curveSegments: 14,
+  };
+
+  const chromeMat = new THREE.MeshPhysicalMaterial({
+    color: 0xF1F3F8,
+    metalness: 1.0,
+    roughness: 0.08,
+    envMapIntensity: 1.75,
+    clearcoat: 0.6,
+    clearcoatRoughness: 0.08,
+    reflectivity: 1.0,
+  });
+
+  const zTopGeo = new THREE.ExtrudeGeometry(makeShape(Z_TOP_VERTS), extrudeSettings);
+  zTopGeo.translate(0, 0, -Z_DEPTH * 0.5);
+  const zTopMesh = new THREE.Mesh(zTopGeo, chromeMat);
+
+  const zBotGeo = new THREE.ExtrudeGeometry(makeShape(Z_BOT_VERTS), extrudeSettings);
+  zBotGeo.translate(0, 0, -Z_DEPTH * 0.5);
+  const zBotMat = chromeMat.clone();
+  zBotMat.transparent = true;
+  zBotMat.opacity = 0;
+  const zBotMesh = new THREE.Mesh(zBotGeo, zBotMat);
+
+  const zGroup = new THREE.Group();
+  zGroup.add(zTopMesh, zBotMesh);
+  scene.add(zGroup);
+
+  function bboxOf(verts) {
+    let minX =  Infinity, maxX = -Infinity, minY =  Infinity, maxY = -Infinity;
+    for (const v of verts) {
+      if (v.x < minX) minX = v.x;
+      if (v.x > maxX) maxX = v.x;
+      if (v.y < minY) minY = v.y;
+      if (v.y > maxY) maxY = v.y;
+    }
+    return { minX, maxX, minY, maxY };
+  }
+  function pointInPoly(px, py, verts) {
+    let inside = false;
+    for (let i = 0, j = verts.length - 1; i < verts.length; j = i++) {
+      const xi = verts[i].x, yi = verts[i].y;
+      const xj = verts[j].x, yj = verts[j].y;
+      if (((yi > py) !== (yj > py)) && (px < (xj - xi) * (py - yi) / (yj - yi) + xi)) {
+        inside = !inside;
+      }
+    }
+    return inside;
+  }
+
+  function sampleInterior(verts, count, zRange, yMin, yMax, zOffset) {
+    const bb = bboxOf(verts);
+    const xMin = bb.minX, xMax = bb.maxX;
+    const yLo  = yMin !== undefined ? Math.max(bb.minY, yMin) : bb.minY;
+    const yHi  = yMax !== undefined ? Math.min(bb.maxY, yMax) : bb.maxY;
+    const zOff = zOffset || 0;
+    const out = new Array(count);
+    for (let i = 0; i < count; i++) {
+      let x, y, tries = 0;
+      do {
+        x = xMin + Math.random() * (xMax - xMin);
+        y = yLo  + Math.random() * (yHi  - yLo);
+        if (++tries > 200) break;
+      } while (!pointInPoly(x, y, verts));
+      out[i] = new THREE.Vector3(x, y, zOff + (Math.random() - 0.5) * 2 * zRange);
+    }
+    return out;
+  }
+
+  function sampleBoundary(verts, count, zRange, zOffset) {
+    const segs = [];
+    let total = 0;
+    for (let i = 0; i < verts.length; i++) {
+      const j = (i + 1) % verts.length;
+      const dx = verts[j].x - verts[i].x;
+      const dy = verts[j].y - verts[i].y;
+      const len = Math.hypot(dx, dy);
+      segs.push({ ax: verts[i].x, ay: verts[i].y, dx, dy, len });
+      total += len;
+    }
+    const zOff = zOffset || 0;
+    const out = new Array(count);
+    for (let i = 0; i < count; i++) {
+      let t = Math.random() * total;
+      for (const seg of segs) {
+        if (t <= seg.len) {
+          const u = t / seg.len;
+          out[i] = new THREE.Vector3(
+            seg.ax + seg.dx * u,
+            seg.ay + seg.dy * u,
+            zOff + (Math.random() - 0.5) * 2 * zRange
+          );
+          break;
+        }
+        t -= seg.len;
+      }
+    }
+    return out;
+  }
+
+  function sampleTextPositions(text, count, opts) {
+    const fontSize   = opts.fontSize   ?? 220;
+    const fontFamily = opts.fontFamily ?? 'Georgia, "Times New Roman", serif';
+    const worldWidth = opts.worldWidth ?? 280;
+    const offsetX    = opts.offsetX    ?? 0;
+    const offsetY    = opts.offsetY    ?? 0;
+    const zRange     = opts.zRange     ?? 6;
+
+    const c = document.createElement('canvas');
+    c.width  = 1280;
+    c.height = 360;
+    const cx = c.getContext('2d');
+    cx.fillStyle = '#FFFFFF';
+    cx.fillRect(0, 0, c.width, c.height);
+    cx.fillStyle = '#000000';
+    cx.font = `bold ${fontSize}px ${fontFamily}`;
+    cx.textBaseline = 'middle';
+    cx.textAlign = 'left';
+    cx.fillText(text, 30, c.height * 0.5);
+
+    const img = cx.getImageData(0, 0, c.width, c.height).data;
+    const dark = [];
+    for (let y = 0; y < c.height; y += 2) {
+      for (let x = 0; x < c.width; x += 2) {
+        if (img[(y * c.width + x) * 4] < 128) dark.push(x, y);
+      }
+    }
+    const out = new Array(count);
+    if (dark.length === 0) {
+      for (let i = 0; i < count; i++) out[i] = new THREE.Vector3(offsetX, offsetY, 0);
+      return out;
+    }
+
+    let minX =  Infinity, maxX = -Infinity, minY =  Infinity, maxY = -Infinity;
+    for (let k = 0; k < dark.length; k += 2) {
+      const x = dark[k], y = dark[k + 1];
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    }
+    const tw = maxX - minX, th = maxY - minY;
+    const scale = worldWidth / tw;
+    const halfH = th * 0.5;
+    const half = dark.length >> 1;
+
+    for (let i = 0; i < count; i++) {
+      const k = ((Math.random() * half) | 0) << 1;
+      const px = dark[k], py = dark[k + 1];
+      const wx = (px - minX) * scale + offsetX;
+      const wy = -((py - minY) - halfH) * scale + offsetY;
+      const wz = (Math.random() - 0.5) * 2 * zRange;
+      out[i] = new THREE.Vector3(wx, wy, wz);
+    }
+    return out;
+  }
+
+  // Sand particles sit in a thin layer just in front of the Z's front face
+  // (front face is at z ≈ +17 after extrude+bevel). This keeps them visible
+  // rather than buried inside the solid chrome material.
+  const SAND_Z_OFFSET = 22;
+  const SAND_Z_JITTER = 3;
+
+  const chromeStart  = sampleInterior(Z_TOP_VERTS,  PARTICLE_COUNT_CHROME, SAND_Z_JITTER, 0, 30,  SAND_Z_OFFSET);
+  const chromeTarget = sampleBoundary(Z_BOT_VERTS,  PARTICLE_COUNT_CHROME, SAND_Z_JITTER, SAND_Z_OFFSET);
+
+  const topPos = sampleInterior(Z_TOP_VERTS, PARTICLE_COUNT_GOLD, SAND_Z_JITTER, undefined, undefined, SAND_Z_OFFSET);
+  const botPos = sampleInterior(Z_BOT_VERTS, PARTICLE_COUNT_GOLD, SAND_Z_JITTER, undefined, undefined, SAND_Z_OFFSET);
+  topPos.sort((a, b) => a.y - b.y);
+  botPos.sort((a, b) => a.y - b.y);
+
+  const urvanPos = sampleTextPositions('URVAN', PARTICLE_COUNT_GOLD, {
+    fontSize: 240,
+    worldWidth: 290,
+    offsetX: -85,
+    offsetY: 0,
+    zRange: 7,
+  });
+
+  const scatterDirs = new Array(PARTICLE_COUNT_GOLD);
+  for (let i = 0; i < PARTICLE_COUNT_GOLD; i++) {
+    const u = Math.random();
+    const v = Math.random();
+    const theta = 2 * Math.PI * u;
+    const phi = Math.acos(2 * v - 1);
+    const r = 200 + Math.random() * 140;
+    scatterDirs[i] = new THREE.Vector3(
+      r * Math.sin(phi) * Math.cos(theta),
+      r * Math.sin(phi) * Math.sin(theta),
+      r * Math.cos(phi)
+    );
+  }
+
+  const chromeDelays = new Array(PARTICLE_COUNT_CHROME);
+  const pourDelays   = new Array(PARTICLE_COUNT_GOLD);
+  const fallSpan = 1 - FALL_DURATION;
+  for (let i = 0; i < PARTICLE_COUNT_CHROME; i++) chromeDelays[i] = (i / (PARTICLE_COUNT_CHROME - 1)) * fallSpan;
+  for (let i = 0; i < PARTICLE_COUNT_GOLD;   i++) pourDelays[i]   = (i / (PARTICLE_COUNT_GOLD   - 1)) * fallSpan;
+
+  const chromeSizes = new Float32Array(PARTICLE_COUNT_CHROME);
+  const goldSizes   = new Float32Array(PARTICLE_COUNT_GOLD);
+  for (let i = 0; i < PARTICLE_COUNT_CHROME; i++) chromeSizes[i] = 0.9 + Math.random() * 0.6;
+  for (let i = 0; i < PARTICLE_COUNT_GOLD;   i++) goldSizes[i]   = 0.7 + Math.random() * 0.5;
+
+  const chromeRot = new Float32Array(PARTICLE_COUNT_CHROME * 3);
+  const goldRot   = new Float32Array(PARTICLE_COUNT_GOLD   * 3);
+  for (let i = 0; i < PARTICLE_COUNT_CHROME * 3; i++) chromeRot[i] = Math.random() * Math.PI * 2;
+  for (let i = 0; i < PARTICLE_COUNT_GOLD   * 3; i++) goldRot[i]   = Math.random() * Math.PI * 2;
+
+  // Per-particle phase offsets so the wobble pattern looks organic, not uniform
+  const goldWobblePhase = new Float32Array(PARTICLE_COUNT_GOLD);
+  for (let i = 0; i < PARTICLE_COUNT_GOLD; i++) goldWobblePhase[i] = Math.random() * Math.PI * 2;
+
+  const chromeSandMat = chromeMat.clone();
+  chromeSandMat.transparent = true;
+  chromeSandMat.opacity = 1;
+  chromeSandMat.depthWrite = false;
+  const chromeInst = new THREE.InstancedMesh(
+    new THREE.IcosahedronGeometry(1.35, 0),
+    chromeSandMat,
+    PARTICLE_COUNT_CHROME
+  );
+  chromeInst.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  scene.add(chromeInst);
+
+  const goldMat = new THREE.MeshPhysicalMaterial({
+    color: 0xD89A8A,
+    metalness: 1.0,
+    roughness: 0.22,
+    envMapIntensity: 1.45,
+    clearcoat: 0.35,
+    clearcoatRoughness: 0.18,
+    reflectivity: 1.0,
+  });
+  const goldInst = new THREE.InstancedMesh(
+    new THREE.IcosahedronGeometry(1.05, 0),
+    goldMat,
+    PARTICLE_COUNT_GOLD
+  );
+  goldInst.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  scene.add(goldInst);
+
+  const dummy = new THREE.Object3D();
+
+  function clamp01(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
+
+  const phase = { chromeFall: 0, pour: 0, scatter: 0, urvan: 0 };
+
+  const tmp = new THREE.Vector3();
+  const scatterEnd = new THREE.Vector3();
+
+  function updateChrome() {
+    const cf = phase.chromeFall;
+    let fade = 1;
+    if (cf > 0.82) fade = (1 - cf) / 0.18;
+    chromeSandMat.opacity = fade < 0 ? 0 : fade;
+
+    for (let i = 0; i < PARTICLE_COUNT_CHROME; i++) {
+      const t = clamp01((cf - chromeDelays[i]) / FALL_DURATION);
+      const inv = 1 - t;
+      const eased = 1 - inv * inv * inv;
+
+      const s = chromeStart[i];
+      const tg = chromeTarget[i];
+      dummy.position.set(
+        s.x + (tg.x - s.x) * eased,
+        s.y + (tg.y - s.y) * eased,
+        s.z + (tg.z - s.z) * eased
+      );
+      const r3 = i * 3;
+      dummy.rotation.set(chromeRot[r3], chromeRot[r3 + 1], chromeRot[r3 + 2]);
+      dummy.scale.setScalar(chromeSizes[i]);
+      dummy.updateMatrix();
+      chromeInst.setMatrixAt(i, dummy.matrix);
+    }
+    chromeInst.instanceMatrix.needsUpdate = true;
+
+    zBotMesh.material.opacity = cf;
+  }
+
+  function updateGold() {
+    const p = phase.pour;
+    const s = phase.scatter;
+    const u = phase.urvan;
+    const useUrvan   = u > 0;
+    const useScatter = !useUrvan && s > 0;
+    const usePour    = !useUrvan && !useScatter && p > 0;
+
+    const se = s * s;
+    const uInv = 1 - u;
+    const eu  = 1 - uInv * uInv * uInv;
+
+    const turbTimeA = clockTime * 1.7;
+    const turbTimeB = clockTime * 1.35;
+    const constrictRange = 14;    // Y distance from neck within which the stream pinches
+    const constrictPull  = 0.92;  // 0=no pinch, 1=fully snap to NECK_RADIUS at the neck
+
+    for (let i = 0; i < PARTICLE_COUNT_GOLD; i++) {
+      let px, py, pz;
+      let inFlight = false;
+
+      if (useUrvan) {
+        const sd = scatterDirs[i];
+        const bp = botPos[i];
+        const sx = bp.x + sd.x, sy = bp.y + sd.y, sz = bp.z + sd.z;
+        const target = urvanPos[i];
+        px = sx + (target.x - sx) * eu;
+        py = sy + (target.y - sy) * eu;
+        pz = sz + (target.z - sz) * eu;
+      } else if (useScatter) {
+        const sd = scatterDirs[i];
+        const bp = botPos[i];
+        px = bp.x + sd.x * se;
+        py = bp.y + sd.y * se;
+        pz = bp.z + sd.z * se;
+      } else if (usePour) {
+        const pourT = clamp01((p - pourDelays[i]) / FALL_DURATION);
+        // Power3 easing on the Bezier parameter — particles linger at top
+        // then accelerate hard near the neck, reading as gravity rather than
+        // a uniform glide.
+        const t = pourT * pourT * pourT;
+        const om = 1 - t;
+        const omSq = om * om;
+        const tSq = t * t;
+        const om2t = 2 * om * t;
+        const tp = topPos[i];
+        const bp = botPos[i];
+        px = omSq * tp.x + om2t * NECK.x + tSq * bp.x;
+        py = omSq * tp.y + om2t * NECK.y + tSq * bp.y;
+        pz = omSq * tp.z + om2t * NECK.z + tSq * bp.z;
+
+        // Neck constriction — pinch the stream toward a small radius around
+        // the central axis as Y approaches the neck. Without this the Bezier
+        // alone leaves the stream visibly fanned out at the pinch point.
+        const dy = py < 0 ? -py : py;
+        if (dy < constrictRange) {
+          const f = 1 - dy / constrictRange;
+          const r = Math.sqrt(px * px + pz * pz);
+          if (r > 1e-4) {
+            const targetR = NECK_RADIUS + (r - NECK_RADIUS) * (1 - f * constrictPull);
+            const scale = targetR / r;
+            px *= scale;
+            pz *= scale;
+          }
+        }
+        inFlight = pourT > 0 && pourT < 1;
+      } else {
+        const tp = topPos[i];
+        px = tp.x; py = tp.y; pz = tp.z;
+      }
+
+      // Subtle turbulence — only while in-flight during pour, so settled
+      // sand at top/bottom doesn't shimmer.
+      if (inFlight) {
+        const ph = goldWobblePhase[i];
+        px += Math.sin(turbTimeA + ph) * TURB_AMP;
+        pz += Math.cos(turbTimeB + ph * 1.3) * TURB_AMP;
+      }
+
+      dummy.position.set(px, py, pz);
+      const r3 = i * 3;
+      dummy.rotation.set(goldRot[r3], goldRot[r3 + 1], goldRot[r3 + 2]);
+      dummy.scale.setScalar(goldSizes[i]);
+      dummy.updateMatrix();
+      goldInst.setMatrixAt(i, dummy.matrix);
+    }
+    goldInst.instanceMatrix.needsUpdate = true;
+  }
+
+  const composer = new EffectComposer(renderer);
+  composer.setPixelRatio(renderer.getPixelRatio());
+  composer.setSize(window.innerWidth, window.innerHeight);
+  composer.addPass(new RenderPass(scene, camera));
+  const bloomPass = new UnrealBloomPass(
+    new THREE.Vector2(window.innerWidth, window.innerHeight),
+    0.55,   // strength
+    0.55,   // radius
+    0.78    // threshold (only bright highlights bloom)
+  );
+  composer.addPass(bloomPass);
+  composer.addPass(new OutputPass());
+
+  let clockTime = 0;
+  const camLookAt = new THREE.Vector3();
+
+  function render() {
+    clockTime = performance.now() * 0.001;
+
+    // Subtle cinematic camera drift — slow sinusoidal offsets, partial-track the Z
+    camera.position.x = Math.sin(clockTime * 0.14) * 7;
+    camera.position.y = Math.cos(clockTime * 0.11) * 3.5;
+    camLookAt.set(zGroup.position.x * 0.3, zGroup.position.y, 0);
+    camera.lookAt(camLookAt);
+
+    updateChrome();
+    updateGold();
+    composer.render();
+  }
+  gsap.ticker.add(render);
+
+  function onResize() {
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    renderer.setSize(w, h);
+    composer.setSize(w, h);
+    bloomPass.setSize(w, h);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+    ScrollTrigger.refresh();
+  }
+  window.addEventListener('resize', onResize);
+
+  const tl = gsap.timeline({
+    scrollTrigger: {
+      trigger: '.hero',
+      start: 'top top',
+      end: '+=6400',
+      scrub: 0.6,
+      pin: true,
+      anticipatePin: 1,
+    }
+  });
+
+  tl.to(phase, { chromeFall: 1, duration: 1.8, ease: 'sine.inOut' })
+    .to({},    { duration: 0.9 })                                    // cinematic beat: chrome settles
+    .to(phase, { pour:       1, duration: 2.8, ease: 'none' })
+    .to({},    { duration: 0.6 })                                    // hold on filled bottom
+    .to(phase, { scatter:    1, duration: 1.5, ease: 'power2.in' })
+    .to({},    { duration: 0.4 })                                    // dispersed-cloud beat
+    .to(phase, { urvan:      1, duration: 1.7, ease: 'power3.out' })
+    .to(zGroup.position, { x: Z_SLIDE_X, duration: 1.7, ease: 'power3.out' }, '<');
+
+  gsap.to('.scroll-hint', {
+    opacity: 0,
+    scrollTrigger: { trigger: '.hero', start: 'top top', end: '+=200', scrub: true }
+  });
+  </script>
+</body>
+</html>
